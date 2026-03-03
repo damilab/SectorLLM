@@ -1,43 +1,49 @@
-# Large Language Models as Financial Analysts: Sector-Aware Reasoning
+<p align="center">
+  <h2 align="center"><strong>Large Language Models as Financial Analysts: Sector-Aware Reasoning</strong></h2>
+  <h3 align="center"><strong>Computational Economics (2026)</strong></h3>
+</p>
 
-Official implementation of the **sector-aware LLM framework for asset selection**, as described in:
+<p align="center">
+  <a href="https://rdcu.be/e4Ynd">📄 Paper</a> &nbsp;|&nbsp;
+  <a href="https://link.springer.com/article/10.1007/s10614-026-11329-4">🔗 Springer</a>
+</p>
 
-> Kim, H., Jeong, J., Ko, H. et al. *Large Language Models as Financial Analysts: Sector-Aware Reasoning for Investment Decisions.* **Computational Economics** (2026).
-> DOI: [10.1007/s10614-026-11329-4](https://doi.org/10.1007/s10614-026-11329-4)
+<!-- Optional: add a figure under CE/SectorLLM/assets/overview.png -->
+<!--
+<p align="center">
+  <img src="assets/overview.png" width="85%">
+</p>
+-->
 
-## Overview
+<br/>
 
-We frame next-month return prediction as **binary classification** with probabilistic output:
+This repository provides the **official implementation of a sector-aware LLM framework for asset selection**, introduced in:
 
-- Given firm characteristics and GICS sector information, the LLM outputs a **Return Movement Score** `p̂ ∈ [0, 1]` (≥ 0.5 = expected increase).
+> Kim, H., Jeong, J., Ko, H. et al. *Large Language Models as Financial Analysts: Sector-Aware Reasoning for Investment Decisions.* **Computational Economics** (2026). DOI: 10.1007/s10614-026-11329-4
 
-**Key idea: Sector-aware prompting**
+## 📢 Updates
+
+- **2026**: Code released.
+
+## 🔍 Framework Overview
+
+We frame next-month return prediction as **binary classification** with a probabilistic output. Given firm characteristics and GICS sector information, the LLM outputs a **Return Movement Score** `p̂ ∈ [0, 1]` (≥ 0.5 = expected increase).
+
+**Key idea: sector-aware prompting**
 
 - The LLM assumes a **sector-specific analyst role** based on the asset's GICS sector.
 - Prompts follow a structured template requesting both the score and a brief risk-return rationale.
 
 **Tie-breaking**: When assets share identical scores, we use **perplexity** as a confidence measure (lower = more confident).
 
-## Pipeline
+## Getting Started
 
-1. **LLM Inference** (`vllm/run.py`)
-   - Reads monthly question table, runs vLLM inference (default: Llama 3 8B Instruct)
-   - Outputs JSONL with scores, rationales, and token-level statistics
-   - Output: `vllm/outputs/result*_run*.jsonl`
-
-2. **Score Extraction** (`vllm/json2csv.py`)
-   - Parses JSONL to extract scores and rationales
-   - Merges with features by `(permno, year, month)`
-   - Output: `vllm/outputs/parsed_*.csv`
-
-3. **Portfolio Backtests** (`portfolio/main.py`)
-   - Long-only portfolios (equal-weight / value-weight)
-   - Mean-variance optimization (max Sharpe / min risk / max return)
-   - Output: `portfolio/outputs/*.csv`
-
-## Environment
+### 🛠️ Environment Setup
 
 ```bash
+git clone https://github.com/your-repo/SectorLLM.git
+cd SectorLLM
+
 conda env create -f environment.yml
 conda activate sector
 ```
@@ -45,38 +51,46 @@ conda activate sector
 - `environment.yml`: Minimal dependencies (recommended)
 - `environment.lock.yml`: Full export with exact versions for reproducibility
 
-## Data
+### 📁 Data Preparation
 
-- `data/llm_questions_2012_2021.csv` - Monthly prompts for LLM input
-- `data/question_features_2011_2021.csv` - Features table for merging (key: `permno, year, month`)
-- `data/prices_2012_2021.csv` - Price data for backtests
-- `data/permno_monthly_meta.csv` - Monthly metadata (`prc`, `ret`, `shrout`, etc.)
+Place the following files in `data/`:
+
+- `llm_questions_2012_2021.csv` - Monthly prompts for LLM input
+- `question_features_2011_2021.csv` - Features table for merging (key: `permno, year, month`)
+- `prices_2012_2021.csv` - Price data for backtests
+- `permno_monthly_meta.csv` - Monthly metadata (`prc`, `ret`, `shrout`, etc.)
 
 See [data/README.md](data/README.md) for details.
 
-## Usage
+### 🤖 LLM Inference
+
+Run sector-aware prompting with vLLM (default: Llama 3 8B Instruct).
 
 ```bash
-# 1. LLM inference
 python vllm/run.py --data-dir data --output-dir vllm/outputs
-
-# 2. Parse results
-python vllm/json2csv.py --input-dir vllm/outputs --question-csv data/question_features_2011_2021.csv
-
-# 3. Run backtests
-python portfolio/main.py
 ```
 
-## Prompt Variants
-
-By default, `vllm/run.py` runs two variants:
-
+By default, this runs two prompt variants:
 - **With sector**: Sector-specific analyst role using GICS
 - **Without sector**: Generic analyst role (ablation)
 
-Use `--csv-base` and `--csv-except` to specify different input tables for each variant.
+### 📊 Score Extraction
 
-## Citation
+Parse JSONL outputs and merge with features.
+
+```bash
+python vllm/json2csv.py --input-dir vllm/outputs --question-csv data/question_features_2011_2021.csv
+```
+
+### 🚀 Portfolio Backtests
+
+Run backtests with long-only (EW/VW) and mean-variance optimization strategies.
+
+```bash
+python portfolio/main.py
+```
+
+## 📝 Citation
 
 ```bibtex
 @article{kim2026llm_sector_aware,
