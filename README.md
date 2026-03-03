@@ -1,105 +1,80 @@
 # Large Language Models as Financial Analysts: Sector-Aware Reasoning
 
-This repository implements the **LLM-based sector-aware asset selection framework** described in:
+Official implementation of the **sector-aware LLM framework for asset selection**, as described in:
 
-- Kim, H., Jeong, J., Ko, H. et al. *Large Language Models as Financial Analysts: Sector-Aware Reasoning for Investment Decisions.* **Computational Economics** (2026).
-- DOI: `10.1007/s10614-026-11329-4`
-- Paper page: `https://link.springer.com/article/10.1007/s10614-026-11329-4`
+> Kim, H., Jeong, J., Ko, H. et al. *Large Language Models as Financial Analysts: Sector-Aware Reasoning for Investment Decisions.* **Computational Economics** (2026).
+> DOI: [10.1007/s10614-026-11329-4](https://doi.org/10.1007/s10614-026-11329-4)
 
-## Conceptual Overview (Paper Terminology)
+## Overview
 
-We model next-month return direction forecasting as a **binary classification** problem with a continuous probability output:
+We frame next-month return prediction as **binary classification** with probabilistic output:
 
-- For asset *i* at time *t*, given firm characteristics at `t-1` and `t` (feature vectors) and sector information (GICS),
-  the LLM produces a **Return Movement Score** `p̂_{i,t+1} ∈ [0, 1]` (≥ 0.5 indicates an expected increase).
+- Given firm characteristics and GICS sector information, the LLM outputs a **Return Movement Score** `p̂ ∈ [0, 1]` (≥ 0.5 = expected increase).
 
-The key component is **sector-aware prompting**:
+**Key idea: Sector-aware prompting**
 
-- The LLM is assigned a **sector-specific analyst role** conditioned on the asset’s GICS sector.
-- The prompt follows a structured template (cf. the paper’s “LLM Input Template for Asset Return Prediction”),
-  requesting both the score and a brief rationale focused on return-risk balance.
+- The LLM assumes a **sector-specific analyst role** based on the asset's GICS sector.
+- Prompts follow a structured template requesting both the score and a brief risk-return rationale.
 
-**Tie-breaking with model confidence**:
+**Tie-breaking**: When assets share identical scores, we use **perplexity** as a confidence measure (lower = more confident).
 
-- When multiple assets receive identical scores, we tie-break using **perplexity** (lower perplexity = higher confidence).
+## Pipeline
 
-## Pipeline Mapping (Repo → Methodology)
-
-1) **Sector-conditioned prompt construction + LLM inference** (`vllm/run.py`)
-   - Reads a monthly panel-style question table and runs vLLM inference (default model: Llama 3 8B Instruct).
-   - Outputs JSONL with score/rationale and token-level statistics used for confidence.
+1. **LLM Inference** (`vllm/run.py`)
+   - Reads monthly question table, runs vLLM inference (default: Llama 3 8B Instruct)
+   - Outputs JSONL with scores, rationales, and token-level statistics
    - Output: `vllm/outputs/result*_run*.jsonl`
 
-2) **Score extraction + merge back to the original panel** (`vllm/json2csv.py`)
-   - Parses JSONL to extract Return Movement Score and rationale.
-   - Merges with the original question/features table by `(permno, year, month)`.
+2. **Score Extraction** (`vllm/json2csv.py`)
+   - Parses JSONL to extract scores and rationales
+   - Merges with features by `(permno, year, month)`
    - Output: `vllm/outputs/parsed_*.csv`
 
-3) **Asset ranking/selection + portfolio construction/backtests** (`portfolio/main.py`)
-   - Consumes `parsed_result(_except_gics)_runN.csv`.
-   - Performs portfolio backtests including:
-     - Long-only (equal-weight / value-weight)
-     - Mean-Variance portfolios (Maximum Sharpe Ratio / Minimum Risk / Maximum Return)
+3. **Portfolio Backtests** (`portfolio/main.py`)
+   - Long-only portfolios (equal-weight / value-weight)
+   - Mean-variance optimization (max Sharpe / min risk / max return)
    - Output: `portfolio/outputs/*.csv`
 
-## Repository Layout
-
-- `vllm/run.py`: question CSV → vLLM inference → `vllm/outputs/result*_run*.jsonl`
-- `vllm/json2csv.py`: parse `result*.jsonl` + merge features → `vllm/outputs/parsed_*.csv`
-- `portfolio/main.py`: backtests → `portfolio/outputs/*.csv`
-
-## Environment (Conda)
+## Environment
 
 ```bash
 conda env create -f environment.yml
 conda activate sector
 ```
 
-`environment.yml` is a minimal, maintainable spec (top-level dependencies only).
+- `environment.yml`: Minimal dependencies (recommended)
+- `environment.lock.yml`: Full export with exact versions for reproducibility
 
-For exact reproducibility, `environment.lock.yml` is a full `conda env export` of the author's `vllm` environment (it includes transitive packages such as CUDA-related dependencies and may use non-default channels).
+## Data
 
-```bash
-conda env create -f environment.lock.yml
-conda activate sector
-```
+- `data/llm_questions_2012_2021.csv` - Monthly prompts for LLM input
+- `data/question_features_2011_2021.csv` - Features table for merging (key: `permno, year, month`)
+- `data/prices_2012_2021.csv` - Price data for backtests
+- `data/permno_monthly_meta.csv` - Monthly metadata (`prc`, `ret`, `shrout`, etc.)
 
-## Data Files
+See [data/README.md](data/README.md) for details.
 
-Default input files (relative paths):
-
-- `data/llm_questions_2012_2021.csv`
-  - LLM input table containing per-asset monthly prompts (includes `question` column).
-- `data/question_features_2011_2021.csv`
-  - Source question/features table used to merge model outputs back to the panel (merge key: `permno, year, month`).
-- `data/prices_2012_2021.csv`
-  - Price table used for backtests (uses `Date` column).
-- `data/permno_monthly_meta.csv`
-  - Permno-month metadata merged on `permno, date` (includes `prc/ret/shrout`, etc.).
-
-See `data/README.md` for details.
-
-## Running
+## Usage
 
 ```bash
-# 1) LLM inference (outputs: vllm/outputs/)
+# 1. LLM inference
 python vllm/run.py --data-dir data --output-dir vllm/outputs
 
-# 2) Parse/merge JSONL outputs into CSV (default: vllm/outputs/*.jsonl)
+# 2. Parse results
 python vllm/json2csv.py --input-dir vllm/outputs --question-csv data/question_features_2011_2021.csv
 
-# 3) Backtests (outputs: portfolio/outputs/)
+# 3. Run backtests
 python portfolio/main.py
 ```
 
-## Prompt Variants (With vs. Without Sector Context)
+## Prompt Variants
 
-`vllm/run.py` runs two prompt variants by default:
+By default, `vllm/run.py` runs two variants:
 
-- **With sector context**: sector-specific analyst role using GICS (sector-aware prompting)
-- **Without sector context**: analyst role without GICS conditioning
+- **With sector**: Sector-specific analyst role using GICS
+- **Without sector**: Generic analyst role (ablation)
 
-To use different input tables for the two variants, set `--csv-base` and `--csv-except` explicitly.
+Use `--csv-base` and `--csv-except` to specify different input tables for each variant.
 
 ## Citation
 
