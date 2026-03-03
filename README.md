@@ -8,12 +8,9 @@
   <a href="https://link.springer.com/article/10.1007/s10614-026-11329-4">🔗 Springer</a>
 </p>
 
-<!-- Optional: add a figure under CE/SectorLLM/assets/overview.png -->
-<!--
 <p align="center">
   <img src="assets/overview.png" width="85%">
 </p>
--->
 
 <br/>
 
