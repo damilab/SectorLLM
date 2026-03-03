@@ -21,10 +21,6 @@ This repository provides the **official implementation of a sector-aware LLM fra
 
 > Kim, H., Jeong, J., Ko, H. et al. *Large Language Models as Financial Analysts: Sector-Aware Reasoning for Investment Decisions.* **Computational Economics** (2026). DOI: 10.1007/s10614-026-11329-4
 
-## 📢 Updates
-
-- **2026**: Code released.
-
 ## 🔍 Framework Overview
 
 We predict **next-month return direction** using a **sector-conditioned LLM prompt**.
@@ -33,17 +29,17 @@ For each asset *i* at month *t*, we provide firm characteristics from `t-1` and 
 - **Return Movement Score** `p̂ ∈ [0, 1]` (≥ 0.5 indicates expected increase)
 - **Rationale** explaining the return-risk trade-off under the sector context
 
-**Sector-aware prompting**
+### 🎯 Sector-Aware Prompting
 - The prompt assigns the model a role: *"a financial analyst specializing in the {GICS sector} sector."*
 - Inputs are presented in a structured table format with a glossary of variable definitions.
 - Inference uses `temperature = 0` for deterministic outputs.
 
-**Data (paper setting)**
+### 📈 Data (Paper Setting)
 - Universe: S&P 500 constituents (Jan 2012 – Dec 2021), 293 firms, 35,160 firm-month observations
 - Features: 21 firm characteristics (momentum, liquidity, risk, valuation) + GICS sector
 - Preprocessing: cross-sectional median imputation, monthly rank normalization to `[-1, 1]`
 
-**Portfolio construction**
+### 💼 Portfolio Construction
 - Each month, assets are ranked by `p̂` and the top-*n* are selected.
 - Ties are broken using **perplexity** of the generated rationale (lower = more confident).
 - Selected assets form long-only portfolios with mean-variance optimization (max Sharpe / min variance).
@@ -73,15 +69,11 @@ See [data/README.md](data/README.md) for details.
 
 ### 🤖 LLM Inference
 
-Run sector-aware prompting with vLLM (default: Llama 3 8B Instruct).
+Run inference with vLLM (default: Llama 3 8B Instruct). This generates both sector-conditioned and ablation (no sector) outputs.
 
 ```bash
 python vllm/run.py --data-dir data --output-dir vllm/outputs
 ```
-
-By default, this runs two prompt variants:
-- **With sector**: Sector-specific analyst role using GICS
-- **Without sector**: Generic analyst role (ablation)
 
 ### 📊 Score Extraction
 
