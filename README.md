@@ -72,7 +72,7 @@ See [data/README.md](data/README.md) for details.
 Run inference with vLLM (default: Llama 3 8B Instruct). This generates both sector-conditioned and ablation (no sector) outputs.
 
 ```bash
-python vllm/run.py --data-dir data --output-dir vllm/outputs
+python vllm/run.py --data-dir data --output-dir vllm/outputs --num-runs 100
 ```
 
 ### 📊 Score Extraction

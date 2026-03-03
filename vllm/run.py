@@ -13,6 +13,7 @@ import os
 import json
 import time
 import gc
+import yaml
 import numpy as np
 import pandas as pd
 from vllm import LLM, SamplingParams
@@ -23,6 +24,16 @@ warnings.filterwarnings("ignore")
 
 import argparse
 from pathlib import Path
+
+# Load prompts from YAML
+VLLM_DIR = Path(__file__).resolve().parent
+with open(VLLM_DIR / "prompts.yaml", "r", encoding="utf-8") as f:
+    PROMPTS = yaml.safe_load(f)
+
+acronym_descriptions = PROMPTS["acronym_descriptions"].strip()
+acronym_ex_descriptions = PROMPTS["acronym_ex_descriptions"].strip()
+messages_template = PROMPTS["messages_template"]
+messages_template_except_gics = PROMPTS["messages_template_except_gics"]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--gpu-memory-utilization", type=float, default=0.97)
@@ -35,6 +46,7 @@ parser.add_argument("--output-dir", type=str, default=None, help="Directory to w
 parser.add_argument("--csv-base", type=str, default=None, help="Input CSV for base run (default: <data-dir>/llm_questions_2012_2021.csv)")
 parser.add_argument("--csv-except", type=str, default=None, help="Input CSV for except_gics run (default: <data-dir>/llm_questions_2012_2021.csv)")
 parser.add_argument("--model", type=str, default="meta-llama/Meta-Llama-3-8B-Instruct")
+parser.add_argument("--num-runs", type=int, default=100, help="Number of inference runs (default: 100)")
 args = parser.parse_args()
 
 # Initialize the model once.
@@ -67,54 +79,7 @@ def cleanup_memory():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-acronym_descriptions = """
-- **mom1m**: 1-month cumulative return (1-month momentum)
-- **mom12m**: 11-month cumulative returns ending one month before month end (12-month momentum)
-- **chmom**: Cumulative returns from months t-6 to t-1 minus months t-12 to t-7 (Change in 6-month momentum)
-- **indmom**: Equal weighted average industry 12-month returns (Industry momentum)
-- **maxret**: Maximum daily return from returns during calendar month t-1
-- **mom36m**: Cumulative returns from months t-36 to t-13 (36-month momentum)
-- **turn**: Average monthly trading volume for most recent 3 months scaled by number of shares outstanding in current month (Share turnover)
-- **std_turn**: Monthly standard deviation of daily share turnover (Volatility of liquidity)
-- **mvel1**: Log market equity (Size)
-- **dolvol**: Natural log of trading volume times price per share from month t-2 (Dollar trading volume)
-- **ill**: Average of daily (absolute return / dollar volume) (Illiquidity)
-- **zerotrade**: Turnover-weighted number of zero trading days for most recent 1 month (Zero trading days)
-- **baspread**: Monthly average of daily bid-ask spread divided by average of daily spread (Bid-ask spread)
-- **retvol**: Standard deviation of daily returns from month t-1 (Return volatility)
-- **idiovol**: Standard deviation of residuals of weekly returns on weekly equal weighted market returns for 3 years prior to month end (Idiosyncratic return volatility)
-- **beta**: Estimated market beta from weekly returns and equal weighted market returns for 3 years ending month t-1 with at least 52 weeks of returns
-- **betasq**: Market beta squared
-- **ep**: Annual income before extraordinary items (ib) divided by end of fiscal year market capitalization (Earnings to price)
-- **sp**: Annual revenue (sale) divided by fiscal year-end market capitalization (Sales to price)
-- **agr**: Annual percent change in total assets (Asset growth)
-- **nincr**: Number of consecutive quarters (up to eight quarters) with an increase in earnings (ibq) over same quarter in the prior year (Number of earnings increase)
-- **gics**: Global Industry Classification Standard code that defines the sector classification of the asset (Sector identifier)
-""".strip() 
-
-acronym_ex_descriptions = """
-- **mom1m**: 1-month cumulative return (1-month momentum)
-- **mom12m**: 11-month cumulative returns ending one month before month end (12-month momentum)
-- **chmom**: Cumulative returns from months t-6 to t-1 minus months t-12 to t-7 (Change in 6-month momentum)
-- **indmom**: Equal weighted average industry 12-month returns (Industry momentum)
-- **maxret**: Maximum daily return from returns during calendar month t-1
-- **mom36m**: Cumulative returns from months t-36 to t-13 (36-month momentum)
-- **turn**: Average monthly trading volume for most recent 3 months scaled by number of shares outstanding in current month (Share turnover)
-- **std_turn**: Monthly standard deviation of daily share turnover (Volatility of liquidity)
-- **mvel1**: Log market equity (Size)
-- **dolvol**: Natural log of trading volume times price per share from month t-2 (Dollar trading volume)
-- **ill**: Average of daily (absolute return / dollar volume) (Illiquidity)
-- **zerotrade**: Turnover-weighted number of zero trading days for most recent 1 month (Zero trading days)
-- **baspread**: Monthly average of daily bid-ask spread divided by average of daily spread (Bid-ask spread)
-- **retvol**: Standard deviation of daily returns from month t-1 (Return volatility)
-- **idiovol**: Standard deviation of residuals of weekly returns on weekly equal weighted market returns for 3 years prior to month end (Idiosyncratic return volatility)
-- **beta**: Estimated market beta from weekly returns and equal weighted market returns for 3 years ending month t-1 with at least 52 weeks of returns
-- **betasq**: Market beta squared
-- **ep**: Annual income before extraordinary items (ib) divided by end of fiscal year market capitalization (Earnings to price)
-- **sp**: Annual revenue (sale) divided by fiscal year-end market capitalization (Sales to price)
-- **agr**: Annual percent change in total assets (Asset growth)
-- **nincr**: Number of consecutive quarters (up to eight quarters) with an increase in earnings (ibq) over same quarter in the prior year (Number of earnings increase)
-""".strip() 
+ 
 
 def clean_assistant_prefix(text: str) -> str:
     if text.strip().lower().startswith("assistant"):
@@ -164,81 +129,6 @@ def prepare_batch_conversations(batch, tokenizer, messages_template):
         )
     return convs
 
-messages_template = [
-    {
-        "role": "system",
-        "content": """You are a financial analyst specializing in the **{row[gics]}** sector.
-
-Your task is to forecast whether the return of an asset will rise or fall next month, using its recent performance data and typical sector characteristics.
-You will also be provided with a glossary of variables used in the data to assist interpretation.
-
-Follow these steps:
-
-1. Analyze the asset’s recent variable trends.   
-2. Consider the characteristics and risk profile of the **{row[gics]}** sector.  
-3. Predict a single **Return Movement Score** between 0.0 and 1.0:  
-   • ≥ 0.5 = expected increase (closer to 1 → stronger upside)  
-   • < 0.5 = expected decrease (closer to 0 → stronger downside)  
-4. Explain your reasoning briefly—focus on how return potential and risk were balanced.
-
-Respond **ONLY** in this format:
-
-**Prediction for t+1**  
-- **Return Movement Score**: (0.0 ~ 1.0)  
-- **Rationale**: (brief explanation of return-risk balance)  
-"""
-    },
-    {
-        "role": "user",
-        "content": """
-To assist your analysis, here is a glossary of financial variables used in the time-series data:
-{acronym_descriptions}
-
-The following tables show recent time-series features for a specific asset in the **{row[gics]}** sector.  
-Columns are ordered as: t (most recent), then t-1.
-
-{row[question]}
-"""
-    }
-]
-
-
-messages_template_except_gics = [
-    {
-        "role": "system",
-        "content": """You are a financial analyst.
-
-Your task is to forecast whether the return of an asset will rise or fall next month, using its recent performance data.
-You will also be provided with a glossary of variables used in the data to assist interpretation.
-
-Follow these steps:
-
-1. Analyze the asset’s recent variable trends.  
-2. Predict a single **Return Movement Score** between 0.0 and 1.0:  
-   • ≥ 0.5 = expected increase (closer to 1 → stronger upside)  
-   • < 0.5 = expected decrease (closer to 0 → stronger downside)  
-3. Explain your reasoning briefly—focus on how return potential and risk were balanced.
-
-Respond **ONLY** in this format:
-
-**Prediction for t+1**  
-- **Return Movement Score**: (0.0 ~ 1.0)  
-- **Rationale**: (brief explanation of return-risk balance)  
-"""
-    },
-    {
-        "role": "user",
-        "content": """
-To assist your analysis, here is a glossary of financial variables used in the time-series data:
-{acronym_ex_descriptions}
-
-The following tables show recent time-series features for a specific asset.  
-Columns are ordered as: t (most recent), then t-1.
-
-{row[question]}
-"""
-    }
-]
 
 def run_single_inference(llm, tokenizer, csv_file, messages_template, output_prefix, run_idx):
     """Run a single inference pass (model is passed in)."""
@@ -337,7 +227,7 @@ if __name__ == "__main__":
 
     # Runs
     try:
-        for run_idx in range(1, 101):
+        for run_idx in range(1, args.num_runs + 1):
             print(f"\n==== [WITH-GICS TEMPLATE] Run {run_idx} ====")
             run_single_inference(llm, tokenizer, csv_base, messages_template, base_prefix, run_idx)
             
@@ -346,7 +236,7 @@ if __name__ == "__main__":
                 print(f"Periodic cleanup at run {run_idx}")
                 cleanup_memory()
                 
-        for run_idx in range(1, 101):
+        for run_idx in range(1, args.num_runs + 1):
             print(f"\n==== [EXCEPT-GICS TEMPLATE] Run {run_idx} ====")
             run_single_inference(llm, tokenizer, csv_except, messages_template_except_gics, except_prefix, run_idx)
             
