@@ -27,29 +27,38 @@ This repository provides the **official implementation of a sector-aware LLM fra
 
 ## 🔍 Framework Overview
 
-We frame next-month return prediction as **binary classification** with a probabilistic output. Given firm characteristics and GICS sector information, the LLM outputs a **Return Movement Score** `p̂ ∈ [0, 1]` (≥ 0.5 = expected increase).
+We predict **next-month return direction** using a **sector-conditioned LLM prompt**.
+For each asset *i* at month *t*, we provide firm characteristics from `t-1` and `t` plus its GICS sector, and the LLM outputs:
 
-**Key idea: sector-aware prompting**
+- **Return Movement Score** `p̂ ∈ [0, 1]` (≥ 0.5 indicates expected increase)
+- **Rationale** explaining the return-risk trade-off under the sector context
 
-- The LLM assumes a **sector-specific analyst role** based on the asset's GICS sector.
-- Prompts follow a structured template requesting both the score and a brief risk-return rationale.
+**Sector-aware prompting**
+- The prompt assigns the model a role: *"a financial analyst specializing in the {GICS sector} sector."*
+- Inputs are presented in a structured table format with a glossary of variable definitions.
+- Inference uses `temperature = 0` for deterministic outputs.
 
-**Tie-breaking**: When assets share identical scores, we use **perplexity** as a confidence measure (lower = more confident).
+**Data (paper setting)**
+- Universe: S&P 500 constituents (Jan 2012 – Dec 2021), 293 firms, 35,160 firm-month observations
+- Features: 21 firm characteristics (momentum, liquidity, risk, valuation) + GICS sector
+- Preprocessing: cross-sectional median imputation, monthly rank normalization to `[-1, 1]`
+
+**Portfolio construction**
+- Each month, assets are ranked by `p̂` and the top-*n* are selected.
+- Ties are broken using **perplexity** of the generated rationale (lower = more confident).
+- Selected assets form long-only portfolios with mean-variance optimization (max Sharpe / min variance).
 
 ## Getting Started
 
 ### 🛠️ Environment Setup
 
 ```bash
-git clone https://github.com/your-repo/SectorLLM.git
+git clone https://github.com/damilab/SectorLLM.git
 cd SectorLLM
 
 conda env create -f environment.yml
 conda activate sector
 ```
-
-- `environment.yml`: Minimal dependencies (recommended)
-- `environment.lock.yml`: Full export with exact versions for reproducibility
 
 ### 📁 Data Preparation
 
