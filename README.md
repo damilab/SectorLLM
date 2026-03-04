@@ -1,5 +1,5 @@
 <p align="center">
-  <h2 align="center"><strong>Large Language Models as Financial Analysts: Sector-Aware Reasoning</strong></h2>
+  <h2 align="center"><strong>Large Language Models as Financial Analysts: Sector-Aware Reasoning for Investment Decisions</strong></h2>
   <h3 align="center"><strong>Computational Economics (2026)</strong></h3>
 </p>
 
