@@ -91,11 +91,12 @@ python portfolio/main.py
 ## 📝 Citation
 
 ```bibtex
-@article{kim2026llm_sector_aware,
-  title   = {Large Language Models as Financial Analysts: Sector-Aware Reasoning for Investment Decisions},
-  author  = {Kim, Hyeonjin and Jeong, Jiwoo and Ko, Hyungjin and Lee, Woojin},
-  journal = {Computational Economics},
-  year    = {2026},
-  doi     = {10.1007/s10614-026-11329-4}
+@article{kim2026large,
+  title={Large Language Models as Financial Analysts: Sector-Aware Reasoning for Investment Decisions},
+  author={Kim, Hyeonjin and Jeong, Jiwoo and Ko, Hyungjin and Lee, Woojin},
+  journal={Computational Economics},
+  pages={1--31},
+  year={2026},
+  publisher={Springer}
 }
 ```
